@@ -1,0 +1,27 @@
+# AI/ML Framework
+torch>=1.11.0
+torchvision>=0.12.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+xgboost>=1.6.0
+shap>=0.41.0
+
+# Medical Image Processing
+opencv-python>=4.6.0
+Pillow>=9.0.0
+scipy>=1.8.0
+
+# Data Analysis
+pandas>=1.4.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.8.0
+
+# Web Interface
+streamlit>=1.12.0
+
+# Utilities
+tqdm>=4.64.0
+requests>=2.28.0
+joblib>=1.1.0
+pyyaml>=6.0
