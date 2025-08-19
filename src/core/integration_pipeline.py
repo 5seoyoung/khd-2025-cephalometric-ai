@@ -24,7 +24,7 @@ try:
     # 패키지 내에서 실행시
     from .demo_inference import ImprovedDemoInference as DemoInference
     from .clinical_metrics import compute_all as compute_clinical_metrics
-    from .multimodal_classifier import DemoClassifier
+    from .multimodal_classifier import EnhancedDemoClassifier as DemoClassifier
 except ImportError:
     # 직접 실행시
     import sys
@@ -33,7 +33,7 @@ except ImportError:
     
     from demo_inference import ImprovedDemoInference as DemoInference
     from clinical_metrics import compute_all as compute_clinical_metrics
-    from multimodal_classifier import DemoClassifier
+    from multimodal_classifier import EnhancedDemoClassifier as DemoClassifier
 
 class CephalometricPipeline:
     """
@@ -65,7 +65,7 @@ class CephalometricPipeline:
                 mean_shape_path=os.path.join(config_dir, "mean_shape.json"),
                 seed=seed
             )
-            self.classifier = DemoClassifier(seed=seed, rule_weight=rule_weight)
+            self.classifier = DemoClassifier(seed=seed)
         else:
             raise NotImplementedError("연구 모드는 안심존에서만 사용 가능합니다")
         

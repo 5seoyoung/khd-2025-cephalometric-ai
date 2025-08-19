@@ -82,26 +82,76 @@ def initialize_session_state():
     if 'demo_mode' not in st.session_state:
         st.session_state.demo_mode = True
 
-def create_landmark_overlay(image, landmarks, highlight_points=None):
+def create_landmark_overlay(image, landmarks, highlight_points=None, 
+                          size_factor=0.016, show_labels=True):
     """이미지에 랜드마크를 오버레이합니다."""
     img_copy = image.copy()
     draw = ImageDraw.Draw(img_copy)
     
+    # 이미지 크기에 따른 동적 크기 조정
+    width, height = image.size
+    base_size = min(width, height)
+    
     for name, (x, y) in landmarks.items():
-        # 하이라이트 포인트는 다른 색상
+        # 하이라이트 포인트는 다른 색상과 크기
         if highlight_points and name in highlight_points:
-            color = 'blue'
-            radius = 6
+            color = '#4169E1'  # 파란색
+            outline_color = '#FFFFFF'
+            radius = max(10, int(base_size * size_factor * 1.2))  # 하이라이트는 20% 더 크게
+            text_color = '#4169E1'
         else:
-            color = 'red'
-            radius = 4
+            color = '#FF4444'  # 밝은 빨간색
+            outline_color = '#FFFFFF'
+            radius = max(8, int(base_size * size_factor))
+            text_color = '#FF4444'
             
-        # 점 그리기
+        # 점 그리기 (외곽선 포함)
         draw.ellipse([x-radius, y-radius, x+radius, y+radius], 
-                    fill=color, outline='white', width=2)
+                    fill=color, outline=outline_color, width=3)
         
-        # 라벨 그리기 (작은 폰트)
-        draw.text((x+8, y-8), name, fill=color)
+        # 라벨 표시 옵션
+        if show_labels:
+            # 텍스트 크기 계산
+            font_size = max(14, int(base_size * size_factor * 1.2))
+            
+            try:
+                # 폰트 로드 시도
+                from PIL import ImageFont
+                try:
+                    font = ImageFont.truetype("Arial.ttf", font_size)
+                except:
+                    try:
+                        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", font_size)
+                    except:
+                        font = ImageFont.load_default()
+            except:
+                font = None
+            
+            # 텍스트 배경 (가독성 향상)
+            text_x, text_y = x + radius + 8, y - radius - 8
+            
+            # 텍스트 크기 측정
+            if font:
+                bbox = draw.textbbox((text_x, text_y), name, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+            else:
+                text_width, text_height = len(name) * 10, 14
+            
+            # 텍스트 배경 그리기
+            bg_padding = 3
+            draw.rectangle([
+                text_x - bg_padding, 
+                text_y - bg_padding,
+                text_x + text_width + bg_padding, 
+                text_y + text_height + bg_padding
+            ], fill='white', outline=text_color, width=1)
+            
+            # 라벨 그리기
+            if font:
+                draw.text((text_x, text_y), name, fill=text_color, font=font)
+            else:
+                draw.text((text_x, text_y), name, fill=text_color)
     
     return img_copy
 
@@ -223,6 +273,26 @@ def main():
                 except Exception as e:
                     st.error(f"❌ 초기화 실패: {e}")
                     st.stop()
+        
+        st.markdown("---")
+        
+        # 시각화 설정
+        st.markdown("### 🎨 시각화 설정")
+        landmark_size = st.selectbox(
+            "랜드마크 크기", 
+            ["작게", "보통", "크게", "매우 크게"], 
+            index=2
+        )
+        
+        show_labels = st.checkbox("랜드마크 이름 표시", value=True)
+        
+        # 크기 매핑
+        size_mapping = {
+            "작게": 0.008,
+            "보통": 0.012, 
+            "크게": 0.016,
+            "매우 크게": 0.020
+        }
         
         st.markdown("---")
         
@@ -351,14 +421,19 @@ def main():
                     landmarks = results["landmarks"]["coordinates"]
                     highlight = ["Or", "Po"] if anchors else None
                     
+                    # 시각화 설정 적용
+                    size_factor = size_mapping.get(landmark_size, 0.016)
+                    
                     overlay_img = create_landmark_overlay(
                         st.session_state.input_image, 
                         landmarks,
-                        highlight_points=highlight
+                        highlight_points=highlight,
+                        size_factor=size_factor,
+                        show_labels=show_labels
                     )
                     
                     st.image(overlay_img, 
-                            caption=f"랜드마크 표시 ({len(landmarks)}개 점)", 
+                            caption=f"랜드마크 표시 ({len(landmarks)}개 점) - {landmark_size} 크기", 
                             use_container_width=True)
                 
                 # 좌표 테이블
