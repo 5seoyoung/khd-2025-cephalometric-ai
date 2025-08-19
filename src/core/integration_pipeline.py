@@ -22,7 +22,7 @@ import json
 # 로컬 모듈 임포트
 try:
     # 패키지 내에서 실행시
-    from .demo_inference import DemoInference
+    from .demo_inference import ImprovedDemoInference as DemoInference
     from .clinical_metrics import compute_all as compute_clinical_metrics
     from .multimodal_classifier import DemoClassifier
 except ImportError:
@@ -31,7 +31,7 @@ except ImportError:
     import os
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     
-    from demo_inference import DemoInference
+    from demo_inference import ImprovedDemoInference as DemoInference
     from clinical_metrics import compute_all as compute_clinical_metrics
     from multimodal_classifier import DemoClassifier
 
