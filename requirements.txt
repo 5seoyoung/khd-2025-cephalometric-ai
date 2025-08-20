@@ -1,108 +1,29 @@
 # requirements.txt
-# 핵심 패키지 (데모 모드용)
+
+# --- Streamlit & UI ---
 streamlit>=1.28.0
+streamlit-option-menu>=0.4.0
 pillow>=9.0.0
+
+# --- AI / Machine Learning ---
+torch>=2.0.0
+torchvision>=0.15.0
+pytorch-lightning>=2.0.0
+opencv-python>=4.5.0
+scikit-learn>=1.0.0
+xgboost>=2.0.0
+shap>=0.45.0
+
+# --- 데이터 처리 및 시각화 ---
 numpy>=1.21.0
 pandas>=1.3.0
-
-# 시각화 및 보고서
 matplotlib>=3.5.0
 seaborn>=0.11.0
+
+# --- 의료 영상 처리 (필요한 경우) ---
+pydicom>=2.3.0
+simpleitk>=2.2.0
+
+# --- 기타 유틸리티 ---
 jinja2>=3.0.0
-
-# 유틸리티
 python-dotenv>=0.19.0
-scikit-learn>=1.0.0
-
-# 선택적 패키지 (고급 기능용)
-# opencv-python>=4.5.0
-# streamlit-drawable-canvas>=0.9.0
-
----
-
-# .env.example
-# 데모 모드 설정
-DEMO_MODE=1
-DEMO_MATCH_TOL=exact
-SEED=42
-
-# UI 설정
-STREAMLIT_THEME=light
-UI_COLOR_PRIMARY=#2E8B57
-UI_COLOR_SECONDARY=#F0FFF0
-
-# 로깅
-LOG_LEVEL=INFO
-LOG_DIR=logs
-
----
-
-# .gitignore
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# 환경
-.env
-.venv
-env/
-venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# 데모 결과
-data/demo_results/
-logs/
-*.log
-
-# 임시 파일
-*.tmp
-*.bak
-.DS_Store
-Thumbs.db
-
----
-
-# scripts/run_demo.sh
-#!/bin/bash
-echo "🚀 Starting Cephalometric AI Demo..."
-
-# 환경 변수 설정
-export DEMO_MODE=1
-export STREAMLIT_SERVER_PORT=8501
-
-# 가상환경 활성화 (옵션)
-# source venv/bin/activate
-
-# Streamlit 실행
-streamlit run src/demo/emr_system.py \
-    --server.port=8501 \
-    --server.address=localhost \
-    --theme.base=light \
-    --theme.primaryColor=#2E8B57 \
-    --theme.backgroundColor=#FFFFFF \
-    --theme.secondaryBackgroundColor=#F0FFF0
-
-echo "✅ Demo started at http://localhost:8501"
