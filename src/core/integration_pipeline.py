@@ -41,23 +41,21 @@ class CephalometricPipeline:
     측면두부규격방사선사진 분석 통합 파이프라인
     """
     
-    # [수정] __init__ 메서드 전체를 새로운 코드로 교체
     def __init__(self, 
-                 demo_mode: bool = True,
-                 seed: int = 42,
-                 rule_weight: float = 0.7,
-                 config_dir: Optional[str] = None): # 기본값을 None으로 변경
+                demo_mode: bool = True,
+                seed: int = 42,
+                rule_weight: float = 0.7,
+                config_dir: Optional[str] = None):
         """
-        파이프라인 초기화 (경로 문제 해결 버전)
+        파이프라인 초기화 (경로 문제 최종 해결 버전)
         """
         self.demo_mode = demo_mode
         self.seed = seed
         
-        # config_dir이 주어지지 않으면, 현재 파일 위치를 기준으로 절대 경로를 생성합니다.
         if config_dir is None:
-            # 이 스크립트(integration_pipeline.py)는 src/core/ 에 있으므로
-            # 두 단계 위로 올라가면 프로젝트 최상위 폴더입니다.
-            project_root = Path(__file__).resolve().parent.parent
+            # integration_pipeline.py (현재 파일) -> core -> src -> 프로젝트 루트
+            # 따라서 parent를 세 번 사용합니다.
+            project_root = Path(__file__).resolve().parent.parent.parent
             self.config_dir = project_root / "data" / "clinical_standards"
         else:
             self.config_dir = Path(config_dir)
@@ -65,7 +63,6 @@ class CephalometricPipeline:
         # 컴포넌트 초기화
         if demo_mode:
             self.inference_engine = DemoInference(
-                # Path 객체를 문자열로 변환하여 전달합니다.
                 demo_config_path=str(self.config_dir / "demo_landmarks.json"),
                 mean_shape_path=str(self.config_dir / "mean_shape.json"),
                 seed=seed
