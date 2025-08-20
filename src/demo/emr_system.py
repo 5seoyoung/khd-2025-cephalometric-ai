@@ -18,6 +18,21 @@ import numpy as np
 from datetime import datetime
 import hashlib
 
+try:
+    from src.core.integration_pipeline import CephalometricPipeline
+except Exception as e:
+    st.error("앱 초기화 중 심각한 오류가 발생했습니다.")
+    st.exception(e)
+    st.stop()
+
+# [추가] 파이프라인을 캐싱하여 로드하는 함수
+@st.cache_resource
+def load_pipeline():
+    # 이 함수는 앱이 처음 시작될 때 딱 한 번만 실행됩니다.
+    pipeline = CephalometricPipeline(demo_mode=True, seed=42)
+    return pipeline
+
+
 # 프로젝트 루트 경로 추가
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(project_root)
@@ -1049,17 +1064,16 @@ def main():
         st.markdown("---")
         st.markdown("### ⚙️ 시스템 설정")
         demo_mode = st.toggle("데모 모드", value=True, help="오프라인 시뮬레이션 모드")
-        st.session_state.demo_mode = demo_mode
         
-        if st.session_state.pipeline is None:
-            with st.spinner("파이프라인 초기화 중..."):
-                try:
-                    st.session_state.pipeline = CephalometricPipeline(demo_mode=demo_mode, seed=42)
-                    st.success("✅ 초기화 완료")
-                    add_audit_log("시스템 초기화", "AI 파이프라인 로드 완료")
-                except Exception as e:
-                    st.error(f"❌ 초기화 실패: {e}")
-                    st.stop()
+        # [변경] 파이프라인 초기화 로직 변경
+        try:
+            # st.cache_resource로 만든 함수를 호출하여 파이프라인을 로드합니다.
+            st.session_state.pipeline = load_pipeline(demo_mode_active=demo_mode)
+            # 성공 메시지는 이제 필요 없으므로 주석 처리하거나 삭제합니다.
+            # st.success("✅ 초기화 완료") 
+        except Exception as e:
+            st.error(f"❌ 파이프라인 로딩 실패: {e}")
+            st.stop()
 
         st.markdown("### 🎨 시각화 설정")
         landmark_size = st.selectbox("랜드마크 크기", ["작게", "보통", "크게", "매우 크게"], index=2)
