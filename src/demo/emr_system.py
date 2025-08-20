@@ -361,30 +361,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# 기존의 get_konyang_logo_base64 함수를 이 코드로 전체 교체하세요.
+
+from pathlib import Path
+
 def get_konyang_logo_base64():
-    """건양대 로고를 Base64로 인코딩"""
-    import base64
-    import os
-    # 실제 로고 경로 확인
-    logo_paths = [
-        "khd-2025-cephalometric-ai/data/assets/konyang_logo.png",
-        "data/assets/konyang_logo.png",
-        "../data/assets/konyang_logo.png",
-        "../../data/assets/konyang_logo.png"
-    ]
-    
-    # 실제 로고 파일 찾기
-    for logo_path in logo_paths:
-        try:
-            if os.path.exists(logo_path):
-                with open(logo_path, "rb") as f:
-                    logo_data = f.read()
-                return base64.b64encode(logo_data).decode()
-        except Exception:
-            continue
-    
-    # 로고 파일이 없으면 SVG 로고 생성
+    """건양대 로고를 Base64로 인코딩 (안정적인 경로 사용)"""
     try:
+        # 1. 현재 스크립트 파일(emr_system.py)의 절대 경로를 찾습니다.
+        script_path = Path(__file__).resolve()
+        
+        # 2. 스크립트 위치를 기준으로 프로젝트 최상위 폴더(khd-2025-cephalometric-ai)로 이동합니다.
+        # (src/demo/emr_system.py 이므로 세 단계 위로 올라갑니다)
+        project_root = script_path.parent.parent.parent
+        
+        # 3. 최상위 폴더를 기준으로 로고 파일의 정확한 경로를 만듭니다.
+        logo_path = project_root / "data" / "assets" / "konyang_logo.png"
+
+        # 4. 해당 경로에 파일이 있는지 확인하고 읽어옵니다.
+        if logo_path.exists():
+            with open(logo_path, "rb") as f:
+                logo_data = f.read()
+            return base64.b64encode(logo_data).decode()
+        else:
+            # 파일이 없을 경우를 대비한 fallback 로직은 그대로 둡니다.
+            raise FileNotFoundError("Logo not found at expected path")
+
+    except Exception:
+        # 로고 파일이 없거나 경로에 문제가 있을 경우 SVG로 대체합니다.
         logo_svg = """
         <svg width="120" height="50" viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
             <rect width="120" height="50" fill="white" rx="8" stroke="#2D5530" stroke-width="2"/>
@@ -396,15 +400,7 @@ def get_konyang_logo_base64():
         </svg>
         """
         return base64.b64encode(logo_svg.encode()).decode()
-    except Exception:
-        # 최종 fallback
-        logo_svg = """
-        <svg width="120" height="50" viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
-            <rect width="120" height="50" fill="#2D5530" rx="8"/>
-            <text x="60" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="white" text-anchor="middle">건양대</text>
-        </svg>
-        """
-        return base64.b64encode(logo_svg.encode()).decode()
+
 
 def initialize_session_state():
     """세션 상태 초기화"""
@@ -1429,7 +1425,7 @@ def main():
                 <div>🔒 보안등급: 높음</div>
             </div>
             <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; font-size: 0.9em;">
-                <a href="#" style="color: #2D5530;">시스템 가이드</a> | 
+                <a href="#" styemrle="color: #2D5530;">시스템 가이드</a> | 
                 <a href="#" style="color: #7FB069;">기술지원</a> | 
                 <span style="color: #5B9BD5;">빌드: KY-EMR-240115</span>
             </div>
