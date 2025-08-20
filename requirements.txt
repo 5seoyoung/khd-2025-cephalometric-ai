@@ -12,6 +12,7 @@ pytorch-lightning>=2.0.0
 opencv-python>=4.5.0
 scikit-learn>=1.0.0
 xgboost>=2.0.0
+numba>=0.58.0  
 shap>=0.45.0
 
 # --- 데이터 처리 및 시각화 ---
