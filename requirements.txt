@@ -97,7 +97,7 @@ export STREAMLIT_SERVER_PORT=8501
 # source venv/bin/activate
 
 # Streamlit 실행
-streamlit run src/demo/streamlit_app.py \
+streamlit run src/demo/emr_system.py \
     --server.port=8501 \
     --server.address=localhost \
     --theme.base=light \
