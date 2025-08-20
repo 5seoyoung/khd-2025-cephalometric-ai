@@ -1,47 +1,7 @@
-# requirements.txt (safe-min)
-
-# --- Streamlit & UI ---
 streamlit==1.48.1
 streamlit-option-menu==0.4.0
 pillow==11.3.0
-
-# --- Core numerics / data ---
 numpy==1.26.4
 pandas==2.2.2
-python-dateutil==2.9.0.post0
-pyyaml==6.0.2
-requests==2.32.3
-
-# --- Imaging / ML (CPU) ---
-opencv-python==4.12.0.88
-scikit-learn==1.5.2
-xgboost==2.1.1
-pydicom==3.0.1
-
-# --- Plotting ---
-matplotlib==3.8.4
-
-# --- Utils ---
-jinja2==3.1.4
-python-dotenv==1.0.1
-
-# --- Optional: PDF export used by html_to_pdf_bytes() ---
 xhtml2pdf==0.2.15
-
-# ---------- OPTIONAL (필요할 때만 아래 주석 해제 후 사용) ----------
-# PyTorch (CPU) – 모델 추론 실제 사용 시
-# torch==2.3.1
-# torchvision==0.18.1
-
-# PyTorch Lightning (필요 시)
-# pytorch-lightning==2.3.0
-
-# SHAP/Numba (버전 충돌 위험 높음, 꼭 필요할 때만)
-# numba==0.59.1
-# shap==0.43.0
-
-# SimpleITK (DICOM 고급 처리 필요 시만)
-# simpleitk==2.3.1
-
-# Seaborn (시각화 선택 사항)
-# seaborn==0.13.2
+reportlab>=4.2.0
