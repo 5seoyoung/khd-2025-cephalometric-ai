@@ -4,32 +4,32 @@ Cephalometric AI - Konyang University Medical Center EMR System
 측면두부규격방사선사진 AI 분석 EMR 시스템 (건양대 의료원)
 
 사용법: streamlit run src/demo/emr_system.py
+
+변경 사항(클라우드 배포 안정화):
+- CephalometricPipeline 임포트를 지연(import-on-demand)하여 서버 health check 선행
+- 파이프라인 초기화를 @st.cache_resource로 감싸 재실행 안정화
+- 초기화 실패 시 화면 내 에러 표시(st.exception)로 앱 크래시 방지
 """
 
-import streamlit as st
 import os
+# (선택) MKL/OMP 중복 로딩 이슈 회피에 도움될 때가 있어요.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+import streamlit as st
 import sys
 import time
 from PIL import Image, ImageDraw
-import json
 import base64
 from io import BytesIO
 import numpy as np
 from datetime import datetime
-import hashlib
 
 # 프로젝트 루트 경로 추가
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(project_root)
 sys.path.append(os.path.join(project_root, 'src'))
 
-try:
-    from src.core.integration_pipeline import CephalometricPipeline
-except ImportError:
-    st.error("모듈을 찾을 수 없습니다. 프로젝트 구조를 확인해주세요.")
-    st.stop()
-
-# 페이지 설정
+# 페이지 설정 (최대한 상단에서 실행)
 st.set_page_config(
     page_title="건양대의료원 - Cephalometric AI EMR",
     page_icon="🏥",
@@ -155,7 +155,7 @@ st.markdown("""
     .nav-card.active {
         border-color: var(--ky-pine-green);
         background: var(--ky-pine-green);
-        color: white;
+        color: white.
     }
 
     /* 임상 카드 */
@@ -226,7 +226,7 @@ st.markdown("""
     
     /* 전역 이미지 크기 상한을 더 낮춤 (스크롤 줄이기) */
     .stImage > img {
-        max-height: 320px !important; /* 기존 400px → 320px */
+        max-height: 320px !important;
         object-fit: contain;
     }
     
@@ -363,8 +363,7 @@ st.markdown("""
 
 def get_konyang_logo_base64():
     """건양대 로고를 Base64로 인코딩"""
-    import base64
-    import os
+    import os, base64
     # 실제 로고 경로 확인
     logo_paths = [
         "khd-2025-cephalometric-ai/data/assets/konyang_logo.png",
@@ -372,8 +371,6 @@ def get_konyang_logo_base64():
         "../data/assets/konyang_logo.png",
         "../../data/assets/konyang_logo.png"
     ]
-    
-    # 실제 로고 파일 찾기
     for logo_path in logo_paths:
         try:
             if os.path.exists(logo_path):
@@ -382,7 +379,6 @@ def get_konyang_logo_base64():
                 return base64.b64encode(logo_data).decode()
         except Exception:
             continue
-    
     # 로고 파일이 없으면 SVG 로고 생성
     try:
         logo_svg = """
@@ -397,7 +393,6 @@ def get_konyang_logo_base64():
         """
         return base64.b64encode(logo_svg.encode()).decode()
     except Exception:
-        # 최종 fallback
         logo_svg = """
         <svg width="120" height="50" viewBox="0 0 120 50" xmlns="http://www.w3.org/2000/svg">
             <rect width="120" height="50" fill="#2D5530" rx="8"/>
@@ -423,7 +418,9 @@ def initialize_session_state():
     if 'audit_logs' not in st.session_state:
         st.session_state.audit_logs = []
     if 'overlay_thumbnail' not in st.session_state:
-        st.session_state.overlay_thumbnail = None  # 뷰어 오른쪽에 작은 시각화 썸네일
+        st.session_state.overlay_thumbnail = None
+    if 'input_image' not in st.session_state:
+        st.session_state.input_image = None  # 명시 초기화
 
 def add_audit_log(action, details=""):
     """감사 로그 추가"""
@@ -435,20 +432,17 @@ def add_audit_log(action, details=""):
         "user": "김○○ 의사" if not st.session_state.show_phi else "김철수 의사"
     }
     st.session_state.audit_logs.append(log_entry)
-    # 최대 50개 로그만 유지
     if len(st.session_state.audit_logs) > 50:
         st.session_state.audit_logs = st.session_state.audit_logs[-50:]
 
 def render_hospital_header():
     """실제 EMR처럼 보이는 상단 헤더 (건양대 로고 포함)"""
     logo_base64 = get_konyang_logo_base64()
-    # 실제 로고 파일 확인
     logo_exists = any(os.path.exists(path) for path in [
         "khd-2025-cephalometric-ai/data/assets/konyang_logo.png",
         "data/assets/konyang_logo.png"
     ])
     logo_mime_type = "image/png" if logo_exists else "image/svg+xml"
-    
     st.markdown(f"""
     <div class="emr-header">
         <div class="hospital-brand">
@@ -467,30 +461,25 @@ def render_patient_band():
     """환자 정보 상단 밴드 (PHI 마스킹)"""
     patient_name = "김○○" if not st.session_state.show_phi else "김철수"
     patient_id = "KY-****-001" if not st.session_state.show_phi else "KY-2024-001"
-    
     col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-    
     with col1:
         st.markdown(f"""
         <div style="background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
             <strong>👤 {patient_name}</strong> (M/34세) | ID: {patient_id}
         </div>
         """, unsafe_allow_html=True)
-    
     with col2:
         st.markdown("""
         <div style="background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
             🗓️ 2025.01.15 14:35
         </div>
         """, unsafe_allow_html=True)
-    
     with col3:
         st.markdown("""
         <div style="background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
             📷 측면두부 X-ray | C250115-001
         </div>
         """, unsafe_allow_html=True)
-    
     with col4:
         phi_toggle = st.checkbox("PHI 보기", key="phi_toggle", help="개인정보 마스킹 해제")
         if phi_toggle != st.session_state.show_phi:
@@ -504,7 +493,6 @@ def render_patient_band():
 def render_medical_navigation():
     """의료진 워크플로우 기반 네비게이션"""
     st.markdown("## 📋 분석 워크플로우")
-    
     nav_options = [
         ("🖼️ 이미지 뷰어", "viewer", "이미지 로드 및 확인"),
         ("📊 AI 분석결과", "analysis", "자동 분석 및 결과"),
@@ -513,14 +501,12 @@ def render_medical_navigation():
         ("🔍 이전 검사", "history", "과거 검사 이력"),
         ("⚡ QC 품질관리", "qc", "품질 관리 및 검증")
     ]
-    
     for label, key, desc in nav_options:
         if st.button(f"{label}", key=f"nav_{key}", use_container_width=True,
-                    type="primary" if st.session_state.current_tab == key else "secondary"):
+                     type="primary" if st.session_state.current_tab == key else "secondary"):
             st.session_state.current_tab = key
             add_audit_log(f"탭 전환", f"{label} 탭으로 이동")
             st.rerun()
-        
         if st.session_state.current_tab == key:
             st.markdown(f"<small style='color: #666;'>{desc}</small>", unsafe_allow_html=True)
 
@@ -529,13 +515,11 @@ def render_performance_dashboard(pipeline_result):
     performance = pipeline_result.get('performance', {})
     quality = pipeline_result.get('quality', {})
     classification = pipeline_result.get('classification', {})
-    
     total_time = performance.get('total_time_ms', 0.0)
     quality_score = float(quality.get('overall_score', 0.0)) * 100.0
     predicted_class = classification.get('predicted_class', 'Unknown')
     confidence = float(classification.get('confidence', 0.0)) * 100.0
     current_time = datetime.now().strftime("%H:%M:%S")
-    
     st.markdown(f"""
     <div class="performance-strip">
         <div>⚡ 총 처리시간: <strong>{total_time:.1f}ms</strong></div>
@@ -548,9 +532,7 @@ def render_performance_dashboard(pipeline_result):
 def render_qc_panel(qc_results=None):
     """의료급 QC 점검 패널"""
     st.markdown("### ⚡ QC 품질관리")
-    
     if qc_results is None:
-        # 기본 QC 항목들
         qc_items = [
             {"name": "이미지 품질", "status": "양호", "score": 94.7, "type": "success"},
             {"name": "랜드마크 정확도", "status": "신뢰", "score": 87.3, "type": "success"},
@@ -559,35 +541,26 @@ def render_qc_panel(qc_results=None):
         ]
     else:
         qc_items = qc_results
-    
     for item in qc_items:
         status_icon = {"success": "✅", "warning": "⚠️", "error": "🚨"}.get(item["type"], "ℹ️")
         css_class = f"qc-{item['type']}" if item['type'] in ['warning', 'error'] else "qc-success"
-        
         with st.expander(f"{status_icon} {item['name']} - {item['status']} ({item['score']:.1f}%)"):
             st.markdown(f'<div class="{css_class}">', unsafe_allow_html=True)
-            
             if item["type"] == "warning":
                 st.warning("ANB 7.8°가 정상범위(0-4°)를 벗어남. 재촬영 권장.")
             elif item["type"] == "error":
                 st.error("심각한 품질 문제가 발견되었습니다. 즉시 점검이 필요합니다.")
             else:
                 st.success("품질 기준을 충족합니다.")
-            
             st.markdown("</div>", unsafe_allow_html=True)
 
 def generate_clinical_report(result, patient_info):
     """인쇄 가능한 임상 리포트(HTML)"""
     current_time = datetime.now().strftime("%Y년 %m월 %d일 %H시 %M분")
-    
-    # 환자 정보 (PHI 고려)
     patient_name = patient_info.get('name', '김○○' if not st.session_state.show_phi else '김철수')
     patient_id = patient_info.get('id', 'KY-****-001' if not st.session_state.show_phi else 'KY-2024-001')
-    
-    # 분류 결과
     classification = result.get('classification', {})
     clinical_metrics = result.get('clinical_metrics', {})
-    
     report_html = f"""
     <div class="clinical-report" style="padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
         <header class="report-header" style="text-align: center; border-bottom: 2px solid #2D5530; padding-bottom: 20px; margin-bottom: 30px;">
@@ -627,8 +600,6 @@ def generate_clinical_report(result, patient_info):
                     </thead>
                     <tbody>
     """
-    
-    # 임상 지표 테이블
     normal_ranges = {'SNA': (80, 84), 'SNB': (78, 82), 'ANB': (0, 4), 'FMA': (25, 30)}
     for metric_name, metric_data in clinical_metrics.items():
         if metric_name in normal_ranges:
@@ -636,7 +607,6 @@ def generate_clinical_report(result, patient_info):
             normal_min, normal_max = normal_ranges[metric_name]
             status = "정상" if normal_min <= value <= normal_max else "비정상"
             status_color = "#10b981" if status == "정상" else "#ef4444"
-            
             report_html += f"""
                         <tr>
                             <td style="padding: 8px; border: 1px solid #ddd;">{metric_name}</td>
@@ -645,7 +615,6 @@ def generate_clinical_report(result, patient_info):
                             <td style="padding: 8px; border: 1px solid #ddd; color: {status_color}; font-weight: bold;">{status}</td>
                         </tr>
             """
-    
     report_html += f"""
                     </tbody>
                 </table>
@@ -669,7 +638,6 @@ def generate_clinical_report(result, patient_info):
         </footer>
     </div>
     """
-    
     return report_html
 
 def render_audit_log():
@@ -687,80 +655,56 @@ def create_clinical_overlay(image, landmarks, clinical_metrics=None):
     img_copy = image.copy()
     draw = ImageDraw.Draw(img_copy)
     width, height = image.size
-    
-    # 기본 랜드마크 그리기
     for name, (x, y) in landmarks.items():
         color = '#C53030'
         radius = 8
-        draw.ellipse([x-radius, y-radius, x+radius, y+radius], 
-                    fill=color, outline='white', width=2)
-        
-        # 라벨 추가
-        draw.text((x + radius + 5, y - radius - 5), name, 
-                 fill=color, stroke_width=1, stroke_fill='white')
-    
-    # SN선 그리기 (Sella-Nasion)
+        draw.ellipse([x-radius, y-radius, x+radius, y+radius],
+                     fill=color, outline='white', width=2)
+        draw.text((x + radius + 5, y - radius - 5), name,
+                  fill=color, stroke_width=1, stroke_fill='white')
     if 'S' in landmarks and 'N' in landmarks:
         s_x, s_y = landmarks['S']
         n_x, n_y = landmarks['N']
         draw.line([(s_x, s_y), (n_x, n_y)], fill='#2D5530', width=3)
-        
-        # SN선 라벨
         mid_x, mid_y = (s_x + n_x) / 2, (s_y + n_y) / 2
-        draw.text((mid_x, mid_y - 15), "SN선", fill='#2D5530', 
-                 stroke_width=1, stroke_fill='white')
-    
-    # FH 평면 그리기 (Frankfort Horizontal)
+        draw.text((mid_x, mid_y - 15), "SN선", fill='#2D5530',
+                  stroke_width=1, stroke_fill='white')
     if 'Or' in landmarks and 'Po' in landmarks:
         or_x, or_y = landmarks['Or']
         po_x, po_y = landmarks['Po']
-        # FH 평면을 이미지 전체 너비로 연장
         draw.line([(0, or_y), (width, po_y)], fill='#5B9BD5', width=2)
-        
-        # FH 평면 라벨
         draw.text((width - 100, or_y - 15), "FH 평면", fill='#5B9BD5',
-                 stroke_width=1, stroke_fill='white')
-    
-    # ANB 각도 호 그리기 (if available)
+                  stroke_width=1, stroke_fill='white')
     if clinical_metrics and 'ANB' in clinical_metrics:
         if all(pt in landmarks for pt in ['A', 'N', 'B']):
             a_x, a_y = landmarks['A']
             n_x, n_y = landmarks['N']
             b_x, b_y = landmarks['B']
-            
-            # 간단한 각도 호 (원호 대신 직선으로 표시)
             draw.line([(n_x, n_y), (a_x, a_y)], fill='#FFA726', width=2)
             draw.line([(n_x, n_y), (b_x, b_y)], fill='#FFA726', width=2)
-            
-            # ANB 값 표시
             anb_value = clinical_metrics['ANB']['value']
-            draw.text((n_x + 20, n_y + 20), f"ANB: {anb_value:.1f}°", 
-                     fill='#FFA726', stroke_width=1, stroke_fill='white')
-    
+            draw.text((n_x + 20, n_y + 20), f"ANB: {anb_value:.1f}°",
+                      fill='#FFA726', stroke_width=1, stroke_fill='white')
     return img_copy
 
 def render_clinical_status_badges(clinical_metrics):
     """건양대 테마 정상범위 배지 시스템 (향상됨)"""
     st.markdown("### 📊 임상 지표 상태")
-
     normal_ranges = {'SNA': (80, 84), 'SNB': (78, 82), 'ANB': (0, 4), 'FMA': (25, 30)}
     colors = {'normal': '#2D5530', 'warning': '#FFA726', 'error': '#C53030'}
     cols = st.columns(4)
     metric_names = ['SNA', 'SNB', 'ANB', 'FMA']
-
     for i, metric_name in enumerate(metric_names):
         if metric_name in clinical_metrics:
             metric_data = clinical_metrics[metric_name]
             value = float(metric_data['value'])
             normal_min, normal_max = normal_ranges[metric_name]
-
             if normal_min <= value <= normal_max:
                 status = "정상"; badge_class = "status-badge-normal"; color = colors['normal']; icon = "✅"
             elif abs(value - normal_min) <= 2 or abs(value - normal_max) <= 2:
                 status = "경계"; badge_class = "status-badge-warning"; color = colors['warning']; icon = "⚠️"
             else:
                 status = "이탈"; badge_class = "status-badge-error"; color = colors['error']; icon = "🚨"
-
             with cols[i]:
                 st.markdown(f"""
                 <div class="clinical-card">
@@ -861,7 +805,6 @@ def simulate_classification_from_anb(anb_value):
 def interpret_anb_change_konyang(original_anb, new_anb, new_result):
     """건양대 테마 ANB 변화 해석"""
     change = new_anb - original_anb
-
     if abs(change) < 0.5:
         st.markdown("""
         <div style="background: #2D5530; color: white; padding: 1.2rem; border-radius: 15px;">
@@ -869,12 +812,10 @@ def interpret_anb_change_konyang(original_anb, new_anb, new_result):
         </div>
         """, unsafe_allow_html=True)
         return
-
     if change > 0:
         direction = "증가"; meaning = "상악 과성장 또는 하악 후퇴 양상"; tendency = "Class II 방향"; color = "#C53030"
     else:
         direction = "감소"; meaning = "상악 후퇴 또는 하악 전진 양상"; tendency = "Class III 방향"; color = "#5B9BD5"
-
     st.markdown(f"""
     <div style="background: {color}; color: white; padding: 1.5rem; border-radius: 15px; box-shadow: 0 4px 12px {color}40;">
         <h4 style="margin-top: 0; color: white;">📈 ANB {direction} ({change:+.1f}°)</h4>
@@ -883,7 +824,6 @@ def interpret_anb_change_konyang(original_anb, new_anb, new_result):
         <p><strong>새 분류:</strong> Class {new_result['class']} (신뢰도 {new_result['confidence']*100:.1f}%)</p>
     </div>
     """, unsafe_allow_html=True)
-
     if 3.5 <= new_anb <= 4.5:
         st.markdown("""
         <div style="background: #FFA726; color: white; padding: 1rem; border-radius: 12px; margin-top: 1rem;">
@@ -903,15 +843,12 @@ def create_landmark_overlay(image, landmarks, highlight_points=None, size_factor
     draw = ImageDraw.Draw(img_copy)
     width, height = image.size
     base_size = min(width, height)
-
     for name, (x, y) in landmarks.items():
         if highlight_points and name in highlight_points:
             color = '#5B9BD5'; outline_color = '#FFFFFF'; radius = max(10, int(base_size * size_factor * 1.2)); text_color = '#5B9BD5'
         else:
             color = '#C53030'; outline_color = '#FFFFFF'; radius = max(8, int(base_size * size_factor)); text_color = '#C53030'
-
         draw.ellipse([x-radius, y-radius, x+radius, y+radius], fill=color, outline=outline_color, width=3)
-
         if show_labels:
             font_size = max(14, int(base_size * size_factor * 1.2))
             try:
@@ -925,7 +862,6 @@ def create_landmark_overlay(image, landmarks, highlight_points=None, size_factor
                         font = ImageFont.load_default()
             except:
                 font = None
-
             text_x, text_y = x + radius + 8, y - radius - 8
             if font:
                 bbox = draw.textbbox((text_x, text_y), name, font=font)
@@ -933,7 +869,6 @@ def create_landmark_overlay(image, landmarks, highlight_points=None, size_factor
                 text_height = bbox[3] - bbox[1]
             else:
                 text_width, text_height = len(name) * 10, 14
-
             bg_padding = 3
             draw.rectangle([text_x - bg_padding, text_y - bg_padding,
                             text_x + text_width + bg_padding, text_y + text_height + bg_padding],
@@ -942,14 +877,12 @@ def create_landmark_overlay(image, landmarks, highlight_points=None, size_factor
                 draw.text((text_x, text_y), name, fill=text_color, font=font)
             else:
                 draw.text((text_x, text_y), name, fill=text_color)
-
     return img_copy
 
 def display_clinical_metrics(metrics):
     """건양대 테마 임상 지표 표시"""
     st.markdown("### 📊 임상 지표")
     cols = st.columns(2)
-
     for i, (metric_name, data) in enumerate(metrics.items()):
         col = cols[i % 2]
         with col:
@@ -960,7 +893,6 @@ def display_clinical_metrics(metrics):
                 icon = "⬆️"; status_class = "status-high"; bg_color = "#C53030"
             else:
                 icon = "⬇️"; status_class = "status-low"; bg_color = "#5B9BD5"
-
             st.markdown(f"""
                 <div class="clinical-card">
                     <h4 style="color: {bg_color}; margin: 0;">{icon} {metric_name}</h4>
@@ -973,8 +905,6 @@ def display_clinical_metrics(metrics):
 def display_classification_result(classification):
     """건양대 테마 분류 결과 표시"""
     st.markdown("### 🎯 분류 결과")
-
-    # 숫자/문자 레이블 모두 대응
     class_map_num_to_label = {1: "Class I", 2: "Class II", 3: "Class III"}
     if "predicted_label" in classification:
         label = classification["predicted_label"]
@@ -984,10 +914,8 @@ def display_classification_result(classification):
         label = class_map_num_to_label.get(classification["class"], f"Class {classification['class']}")
     else:
         label = "Unknown"
-
     confidence = float(classification.get("confidence", 0.0))
     anb_value = float(classification.get("anb_value", 0.0))
-
     class_info = {
         "Class I": {"color": "#2D5530", "desc": "골격적으로 정상"},
         "Class II": {"color": "#C53030", "desc": "골격적으로 상악 과성장"},
@@ -995,7 +923,6 @@ def display_classification_result(classification):
     }
     color = class_info.get(label, {}).get("color", "#2D5530")
     description = class_info.get(label, {}).get("desc", "")
-
     st.markdown(f"""
         <div class="clinical-card" style="text-align: center; border: 4px solid {color};">
             <h2 style="color: {color}; margin: 0;">{label}</h2>
@@ -1005,17 +932,14 @@ def display_classification_result(classification):
             <p style="font-size: 0.9em; color: #666; margin: 1rem 0 0 0;">{classification.get('classification_basis', '')}</p>
         </div>
     """, unsafe_allow_html=True)
-
     st.markdown("#### 분류 확률")
     probs = classification.get("probabilities", {})
-    # 키가 숫자(class)로 올 수도 있으니 문자열 라벨로 변환
     normalized_probs = {}
     for k, v in probs.items():
         if isinstance(k, int):
             normalized_probs[class_map_num_to_label.get(k, f"Class {k}")] = v
         else:
             normalized_probs[str(k)] = v
-
     for class_name, prob in normalized_probs.items():
         st.progress(float(prob), text=f"{class_name}: {float(prob)*100:.1f}%")
 
@@ -1028,11 +952,27 @@ def load_demo_image():
         img = Image.new('RGB', (800, 600), color='#F8F9FA')
         draw = ImageDraw.Draw(img)
         draw.rectangle([50, 50, 750, 550], fill='#2D5530', outline='#7FB069', width=5)
-        # 중앙 텍스트(간단 정중앙 배치)
         cx, cy = 400, 300
         draw.text((cx, cy-10), "Konyang Medical Center", fill='white', anchor='mm')
         draw.text((cx, cy+20), "Demo Cephalometric Image", fill='white', anchor='mm')
         return img
+
+# --------- 파이프라인 지연 임포트 + 캐시 ----------
+@st.cache_resource(show_spinner=False)
+def get_pipeline(demo_mode: bool):
+    """클라우드 환경에서의 안정적 임포트/초기화"""
+    try:
+        from src.core.integration_pipeline import CephalometricPipeline
+    except Exception as e:
+        raise RuntimeError(
+            "AI 파이프라인 모듈 임포트 실패.\n"
+            "requirements/runtime 호환성 또는 경로를 확인하세요."
+        ) from e
+    try:
+        return CephalometricPipeline(demo_mode=demo_mode, seed=42)
+    except Exception as e:
+        raise RuntimeError("AI 파이프라인 초기화 실패.") from e
+# ---------------------------------------------------
 
 def main():
     """메인 UI 함수"""
@@ -1040,7 +980,6 @@ def main():
 
     # EMR 헤더 렌더링
     render_hospital_header()
-    
     # 환자 정보 밴드
     render_patient_band()
 
@@ -1049,20 +988,22 @@ def main():
 
     with nav_col:
         render_medical_navigation()
-        
         st.markdown("---")
         st.markdown("### ⚙️ 시스템 설정")
         demo_mode = st.toggle("데모 모드", value=True, help="오프라인 시뮬레이션 모드")
         st.session_state.demo_mode = demo_mode
-        
+
+        # 파이프라인 초기화 (지연 임포트 + 캐시)
         if st.session_state.pipeline is None:
             with st.spinner("파이프라인 초기화 중..."):
                 try:
-                    st.session_state.pipeline = CephalometricPipeline(demo_mode=demo_mode, seed=42)
+                    st.session_state.pipeline = get_pipeline(demo_mode)
                     st.success("✅ 초기화 완료")
                     add_audit_log("시스템 초기화", "AI 파이프라인 로드 완료")
                 except Exception as e:
-                    st.error(f"❌ 초기화 실패: {e}")
+                    st.error("❌ 초기화 실패: AI 파이프라인을 불러올 수 없습니다.")
+                    st.exception(e)
+                    # 여기서 stop을 걸어도 health check는 이미 통과한 상태에서 화면 에러만 표시됩니다.
                     st.stop()
 
         st.markdown("### 🎨 시각화 설정")
@@ -1092,8 +1033,6 @@ def main():
         # 탭별 컨텐츠 렌더링
         if st.session_state.current_tab == "viewer":
             st.markdown("## 🖼️ 이미지 뷰어")
-            
-            # 입력 라인
             col_input, col_button = st.columns([2, 1])
             with col_input:
                 input_method = st.radio("입력 방식:", ["대표 도면", "파일 업로드"], horizontal=True)
@@ -1106,64 +1045,51 @@ def main():
                         st.rerun()
 
             if input_method == "파일 업로드":
-                uploaded_file = st.file_uploader("X-ray 이미지 업로드", type=["jpg", "jpeg", "png"], 
-                                               help="측면두부규격방사선사진을 업로드하세요")
+                uploaded_file = st.file_uploader("X-ray 이미지 업로드", type=["jpg", "jpeg", "png"],
+                                                 help="측면두부규격방사선사진을 업로드하세요")
                 if uploaded_file is not None:
                     selected_image = Image.open(uploaded_file)
                     st.session_state.input_image = selected_image
                     add_audit_log("이미지 업로드", f"파일: {uploaded_file.name}")
                     st.rerun()
 
-            # 이미지와 (오른쪽) 결과 썸네일 나란히 배치
-            if hasattr(st.session_state, 'input_image'):
+            if st.session_state.input_image is not None:
                 col_img, col_thumb = st.columns([1, 1])
-                
                 with col_img:
                     st.markdown("### 📷 입력 이미지")
-                    # 이미지 크기 축소: width 지정
                     st.image(st.session_state.input_image, caption="건양대의료원 - 측면두부X선", width=480)
-                    
-                    # 분석 버튼
                     if st.button("🚀 AI 분석 시작", type="primary", use_container_width=True):
                         with st.spinner("건양대 AI가 분석 중입니다..."):
                             try:
                                 start_time = time.time()
                                 result = st.session_state.pipeline.run(st.session_state.input_image, meta=meta, anchors=anchors)
-                                execution_time = time.time() - start_time
-
+                                _ = time.time() - start_time
                                 if "error" in result:
                                     st.error(f"❌ 분석 실패: {result['error']['message']}")
                                     add_audit_log("분석 실패", result['error']['message'])
                                 else:
                                     st.session_state.analysis_results = result
                                     total_time = result["performance"]["total_time_ms"]
-
-                                    # 썸네일(오버레이) 즉시 생성하여 오른쪽에 표시
                                     lm = result["landmarks"]["coordinates"]
                                     overlay_img = create_clinical_overlay(
                                         st.session_state.input_image, lm, result.get("clinical_metrics")
                                     )
-                                    # 썸네일 저장
                                     thumb = overlay_img.copy()
-                                    # 작은 썸네일로 축소 (세로 320 상한과 균형)
                                     thumb.thumbnail((480, 320))
                                     st.session_state.overlay_thumbnail = thumb
-
                                     st.success("✅ 건양대 AI 분석 완료!")
                                     add_audit_log("AI 분석 완료", f"처리시간: {total_time:.1f}ms")
                                     st.rerun()
                             except Exception as e:
                                 st.error(f"❌ 분석 중 오류 발생: {e}")
+                                st.exception(e)
                                 add_audit_log("분석 오류", str(e))
-                
                 with col_thumb:
                     st.markdown("### 📍 랜드마크 시각화")
                     if st.session_state.overlay_thumbnail is not None:
                         st.image(st.session_state.overlay_thumbnail, caption="임상 오버레이(썸네일)", width=480)
                     else:
                         st.info("AI 분석 후 결과 썸네일이 표시됩니다.")
-                    
-                    # 간단 요약(컴팩트)
                     st.markdown("#### ⚡ 실시간 요약")
                     if st.session_state.analysis_results is not None:
                         results = st.session_state.analysis_results
@@ -1182,11 +1108,8 @@ def main():
                             st.write(f"ANB: **{anb_value:.1f}°** (정상 0–4°)")
                     else:
                         st.caption("요약정보는 분석 완료 후 표시됩니다.")
-                            
             else:
                 st.info("👆 이미지를 선택해주세요")
-                
-                # 시스템 정보 (이미지 없을 때만)
                 st.markdown("### 🖥️ 건양대 AI 시스템 정보")
                 info_col1, info_col2 = st.columns(2)
                 with info_col1:
@@ -1206,40 +1129,31 @@ def main():
 
         elif st.session_state.current_tab == "analysis":
             st.markdown("## 📊 AI 분석결과")
-            
             if st.session_state.analysis_results is not None:
                 results = st.session_state.analysis_results
                 render_performance_dashboard(results)
                 render_clinical_status_badges(results["clinical_metrics"])
-                
                 col1, col2 = st.columns(2)
                 with col1:
                     display_classification_result(results["classification"])
                 with col2:
                     display_clinical_metrics(results["clinical_metrics"])
-
-                # 이미지(랜드마크/오버레이)도 작게
                 st.markdown("---")
                 st.markdown("### 📍 랜드마크 시각화")
                 landmarks = results["landmarks"]["coordinates"]
                 overlay_img = create_clinical_overlay(
                     st.session_state.input_image, landmarks, results.get("clinical_metrics")
                 )
-                # 축소 표시
                 st.image(overlay_img, caption="임상 오버레이", width=640)
-
             else:
                 st.info("먼저 이미지 뷰어에서 분석을 실행해주세요.")
 
         elif st.session_state.current_tab == "simulator":
             st.markdown("## ⚙️ What-If 시뮬레이터")
-            
             if st.session_state.analysis_results is not None:
                 whatif_result = render_whatif_simulator(st.session_state.analysis_results)
                 if whatif_result:
                     add_audit_log("What-if 시뮬레이션", f"ANB 조정: {whatif_result['adjusted_anb']:.1f}°")
-
-                # 시뮬레이터에서도 썸네일 크기 유지
                 st.markdown("---")
                 st.markdown("### 📍 현재 랜드마크(축소)")
                 results = st.session_state.analysis_results
@@ -1253,18 +1167,14 @@ def main():
 
         elif st.session_state.current_tab == "report":
             st.markdown("## 📝 임상 리포트")
-            
             if st.session_state.analysis_results is not None:
                 results = st.session_state.analysis_results
-                
-                # 리포트 생성 옵션
                 col1, col2 = st.columns(2)
                 with col1:
                     include_images = st.checkbox("이미지 포함(HTML 내 렌더링만)", value=True)
                     include_whatif = st.checkbox("What-if 결과 포함", value=False)
                 with col2:
                     report_format = st.selectbox("출력 형식", ["HTML", "PDF"])
-                    
                 if st.button("📄 리포트 생성", type="primary"):
                     patient_info = {
                         'name': '김○○' if not st.session_state.show_phi else '김철수',
@@ -1272,12 +1182,8 @@ def main():
                         'date': '2025년 01월 15일',
                         'study_id': 'C250115-001'
                     }
-                    
                     report_html = generate_clinical_report(results, patient_info)
-
-                    # 간단히 썸네일 이미지를 HTML에 붙일지 여부(선택)
                     if include_images and st.session_state.overlay_thumbnail is not None:
-                        # 이미지 base64 인라인 삽입
                         buf = BytesIO()
                         st.session_state.overlay_thumbnail.save(buf, format="PNG")
                         img_b64 = base64.b64encode(buf.getvalue()).decode()
@@ -1287,10 +1193,7 @@ def main():
                                     <img src="data:image/png;base64,{img_b64}" alt="Overlay" style="max-width:640px;max-height:400px;border:1px solid #ddd;border-radius:6px;"/>
                                  </div></footer>"""
                         )
-
-                    # HTML 프리뷰
                     st.markdown(report_html, unsafe_allow_html=True)
-
                     if report_format == "HTML":
                         st.download_button(
                             label="📥 리포트 다운로드 (HTML)",
@@ -1300,7 +1203,6 @@ def main():
                         )
                         add_audit_log("리포트 생성", "임상 리포트 HTML 생성")
                     else:
-                        # PDF 생성
                         try:
                             pdf_bytes = html_to_pdf_bytes(report_html)
                             st.download_button(
@@ -1314,23 +1216,19 @@ def main():
                             st.error("PDF 변환 모듈(xhtml2pdf)이 설치되어 있지 않습니다. 아래 명령으로 설치하세요:\n\npip install xhtml2pdf")
                         except Exception as e:
                             st.error(f"PDF 생성 중 오류가 발생했습니다: {e}")
-
+                            st.exception(e)
             else:
                 st.info("먼저 AI 분석을 실행해주세요.")
 
         elif st.session_state.current_tab == "history":
             st.markdown("## 🔍 이전 검사")
-            
-            # 가상의 검사 이력
             st.markdown("### 최근 검사 이력")
-            
             history_data = [
                 {"날짜": "2025-01-15", "시간": "14:35", "분류": "Class II", "신뢰도": "87.3%", "상태": "완료"},
                 {"날짜": "2024-12-20", "시간": "10:22", "분류": "Class I", "신뢰도": "91.2%", "상태": "완료"},
                 {"날짜": "2024-11-15", "시간": "16:45", "분류": "Class II", "신뢰도": "85.1%", "상태": "완료"},
                 {"날짜": "2024-10-08", "시간": "09:15", "분류": "Class I", "신뢰도": "89.7%", "상태": "완료"},
             ]
-            
             for i, record in enumerate(history_data):
                 with st.expander(f"📋 {record['날짜']} {record['시간']} - {record['분류']} ({record['신뢰도']})"):
                     col1, col2, col3 = st.columns(3)
@@ -1347,74 +1245,54 @@ def main():
 
         elif st.session_state.current_tab == "qc":
             st.markdown("## ⚡ QC 품질관리")
-            
             if st.session_state.analysis_results is not None:
                 results = st.session_state.analysis_results
-                
-                # QC 결과 생성
                 qc_results = [
                     {"name": "이미지 품질", "status": "양호", "score": 94.7, "type": "success"},
                     {"name": "랜드마크 정확도", "status": "신뢰", "score": 87.3, "type": "success"},
                     {"name": "임상 지표", "status": "검토필요", "score": 76.2, "type": "warning"},
                     {"name": "분류 신뢰도", "status": "높음", "score": 87.3, "type": "success"}
                 ]
-                
-                # ANB 값에 따른 QC 경고
                 clinical_metrics = results.get('clinical_metrics', {})
                 if 'ANB' in clinical_metrics:
                     anb_value = clinical_metrics['ANB']['value']
                     if anb_value < 0 or anb_value > 4:
                         qc_results[2]["type"] = "warning"
                         qc_results[2]["status"] = "범위 이탈"
-                
                 render_qc_panel(qc_results)
-                
-                # 추가 QC 정보
                 st.markdown("### 📊 품질 세부 정보")
-                
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("**이미지 품질 체크**")
                     st.success("✅ 해상도: 적정 (>512px)")
                     st.success("✅ 명암: 양호")
                     st.success("✅ 노이즈: 낮음")
-                    
                 with col2:
                     st.markdown("**랜드마크 품질 체크**")
                     landmarks = results.get('landmarks', {}).get('coordinates', {})
                     st.success(f"✅ 검출 개수: {len(landmarks)}/19개")
                     st.success("✅ 위치 정확도: 높음")
-                    
-                    # ANB 범위 체크
                     if 'ANB' in clinical_metrics:
                         anb_value = clinical_metrics['ANB']['value']
                         if 0 <= anb_value <= 4:
                             st.success(f"✅ ANB 정상범위: {anb_value:.1f}°")
                         else:
                             st.warning(f"⚠️ ANB 범위 이탈: {anb_value:.1f}° (정상: 0-4°)")
-                
-                # QC 권장사항
                 st.markdown("### 💡 권장사항")
                 if clinical_metrics.get('ANB', {}).get('value', 0) > 4:
                     st.warning("🔍 ANB 값이 정상범위를 초과합니다. 추가 검사를 권장합니다.")
                 else:
                     st.success("✅ 모든 품질 기준을 충족합니다.")
-                    
             else:
                 st.info("먼저 AI 분석을 실행해주세요.")
-                
-                # 시스템 QC 상태
                 st.markdown("### 🖥️ 시스템 품질 상태")
                 st.success("🟢 AI 모델: 정상 동작")
                 st.success("🟢 데이터베이스: 연결됨")
                 st.success("🟢 보안: 암호화 활성")
-                
                 st.markdown("**📊 시스템 리소스**")
                 st.progress(0.3, text="CPU: 30%")
                 st.progress(0.5, text="Memory: 50%")
                 st.progress(0.2, text="GPU: 20%")
-
-        # (분석/시뮬레이터 탭에서 별도 큰 이미지 렌더는 위에서 width로 축소 적용)
 
     # 감사 로그 표시
     render_audit_log()
@@ -1429,7 +1307,7 @@ def main():
                 <div>🔒 보안등급: 높음</div>
             </div>
             <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; font-size: 0.9em;">
-                <a href="#" styemrle="color: #2D5530;">시스템 가이드</a> | 
+                <a href="#" style="color: #2D5530;">시스템 가이드</a> | 
                 <a href="#" style="color: #7FB069;">기술지원</a> | 
                 <span style="color: #5B9BD5;">빌드: KY-EMR-240115</span>
             </div>
